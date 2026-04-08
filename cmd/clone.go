@@ -7,7 +7,7 @@ import (
 )
 
 var cloneCmd = &cobra.Command{
-	Use: "clone",
+	Use: "clone <username>",
 	Short: "clone all public repos from a GitHub user",
 	Args: cobra.ExactArgs(1), //to validate exactly one argument is needed
 	RunE: func(cmd *cobra.Command, args []string) error {
