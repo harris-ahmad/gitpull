@@ -54,10 +54,8 @@ func fetchPage(base string, page int, token string) ([]Repo, error) {
 	return repos, nil
 }
 
-func ListRepos(username string, token string) ([]Repo, error) {
-	base := fmt.Sprintf("https://api.github.com/users/%s/repos", username)
+func listRepos(base, token string) ([]Repo, error) {
 	page := 1
-
 	allRepos := []Repo{}
 
 	for {
@@ -75,4 +73,12 @@ func ListRepos(username string, token string) ([]Repo, error) {
 	}
 
 	return allRepos, nil
+}
+
+func ListOrgRepos(org, token string) ([]Repo, error) {
+	return listRepos(fmt.Sprintf("https://api.github.com/orgs/%s/repos", org), token)
+}
+
+func ListRepos(username, token string) ([]Repo, error) {
+	return listRepos(fmt.Sprintf("https://api.github.com/users/%s/repos", username), token)
 }

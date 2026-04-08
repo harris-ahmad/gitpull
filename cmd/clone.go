@@ -31,23 +31,44 @@ func cloneRepo(repo github.Repo) error {
 var cloneCmd = &cobra.Command{
 	Use:   "clone <username>",
 	Short: "clone all public repos from a GitHub user",
-	Args:  cobra.ExactArgs(1),
+	Args:  func(cmd *cobra.Command, args []string) error {
+		org, _ := cmd.Flags().GetString("org")
+		if org == "" && len(args) == 0 {
+			return fmt.Errorf("either <username> or --org <org> is required")
+		}
+		if org != "" && len(args) > 0 {
+			return fmt.Errorf("either <username> or --org <org> is required, not both")
+		}
+		return nil
+	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		token, _ := cmd.Root().PersistentFlags().GetString("token")
 		if token == "" {
 			token = os.Getenv("GITHUB_TOKEN")
 		}
+		org, _ := cmd.Flags().GetString("org")
 
-		username := args[0]
-		skipForks, _ := cmd.Flags().GetBool("skip-forks")
-		skipArchived, _ := cmd.Flags().GetBool("skip-archived")
+		var repos []github.Repo
+		var err error
 
-		fmt.Printf("cloning repos for %s\n", username)
+		if org != "" {
+			repos, err = github.ListOrgRepos(org, token)
+		} else {
+			repos, err = github.ListRepos(args[0], token)
+		}
 
-		repos, err := github.ListRepos(username, token)
 		if err != nil {
 			return fmt.Errorf("failed to list repos: %w", err)
 		}
+		
+		skipForks, _ := cmd.Flags().GetBool("skip-forks")
+		skipArchived, _ := cmd.Flags().GetBool("skip-archived")
+
+		target := org
+		if target == "" {
+			target = args[0]
+		}
+		fmt.Printf("cloning repos for %s\n", target)
 
 		filteredRepos := []github.Repo{}
 		for _, repo := range repos {
@@ -109,5 +130,6 @@ func init() {
 	cloneCmd.Flags().IntP("parallel", "p", cfg.Parallel, "number of concurrent clones")
 	cloneCmd.Flags().Bool("skip-forks", false, "skip forked repos")
 	cloneCmd.Flags().Bool("skip-archived", false, "skip archived repos")
+	cloneCmd.Flags().String("org", "", "clone all repos from a GitHub organization")
 	rootCmd.AddCommand(cloneCmd)
 }
