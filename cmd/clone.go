@@ -10,14 +10,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func cloneRepo(repo github.Repo) error {
+func cloneRepo(repo github.Repo, cloneURL string) error {
 	if _, err := os.Stat(repo.Name); err == nil {
 		fmt.Printf("skipped %s (already exists)\n", repo.Name)
 		return nil
 	}
 
 	fmt.Printf("cloning  %s...\n", repo.Name)
-	cmd := exec.Command("git", "clone", "--quiet", repo.CloneURL, repo.Name)
+	cmd := exec.Command("git", "clone", "--quiet", cloneURL, repo.Name)
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Run(); err != nil {
@@ -31,18 +31,22 @@ func cloneRepo(repo github.Repo) error {
 var cloneCmd = &cobra.Command{
 	Use:   "clone <username>",
 	Short: "clone all public repos from a GitHub user",
-	Args:  func(cmd *cobra.Command, args []string) error {
+	Args: func(cmd *cobra.Command, args []string) error {
 		org, _ := cmd.Flags().GetString("org")
-		if org == "" && len(args) == 0 {
-			return fmt.Errorf("either <username> or --org <org> is required")
+		private, _ := cmd.Flags().GetBool("include-private")
+		if !private && org == "" && len(args) == 0 {
+			return fmt.Errorf("requires a <username>, --org <org>, or --include-private")
 		}
 		if org != "" && len(args) > 0 {
-			return fmt.Errorf("either <username> or --org <org> is required, not both")
+			return fmt.Errorf("--org and <username> are mutually exclusive")
 		}
 		return nil
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		token, _ := cmd.Root().PersistentFlags().GetString("token")
+		useSSH, _ := cmd.Flags().GetBool("ssh")
+		includePrivate, _ := cmd.Flags().GetBool("include-private")
+
 		if token == "" {
 			token = os.Getenv("GITHUB_TOKEN")
 		}
@@ -51,9 +55,13 @@ var cloneCmd = &cobra.Command{
 		var repos []github.Repo
 		var err error
 
-		if org != "" {
+		switch {
+		case includePrivate:
+			fmt.Println("cloning all accessible repos (including private)")
+			repos, err = github.ListPrivateRepos(token)
+		case org != "":
 			repos, err = github.ListOrgRepos(org, token)
-		} else {
+		default:
 			repos, err = github.ListRepos(args[0], token)
 		}
 
@@ -64,11 +72,13 @@ var cloneCmd = &cobra.Command{
 		skipForks, _ := cmd.Flags().GetBool("skip-forks")
 		skipArchived, _ := cmd.Flags().GetBool("skip-archived")
 
-		target := org
-		if target == "" {
-			target = args[0]
+		if !includePrivate {
+			target := org
+			if target == "" {
+				target = args[0]
+			}
+			fmt.Printf("cloning repos for %s\n", target)
 		}
-		fmt.Printf("cloning repos for %s\n", target)
 
 		filteredRepos := []github.Repo{}
 		for _, repo := range repos {
@@ -95,7 +105,11 @@ var cloneCmd = &cobra.Command{
 			go func() {
 				defer wg.Done()
 				for repo := range jobs {
-					err := cloneRepo(repo)
+					cloneURL := repo.CloneURL
+					if useSSH {
+						cloneURL = repo.SSHUrl
+					}
+					err := cloneRepo(repo, cloneURL)
 					if err != nil {
 						results <- err
 					} else {
@@ -131,5 +145,7 @@ func init() {
 	cloneCmd.Flags().Bool("skip-forks", false, "skip forked repos")
 	cloneCmd.Flags().Bool("skip-archived", false, "skip archived repos")
 	cloneCmd.Flags().String("org", "", "clone all repos from a GitHub organization")
+	cloneCmd.Flags().Bool("ssh", cfg.SSH, "use SSH for cloning")
+	cloneCmd.Flags().Bool("include-private", false, "clone all repos accessible to the authenticated user (requires token)")
 	rootCmd.AddCommand(cloneCmd)
 }

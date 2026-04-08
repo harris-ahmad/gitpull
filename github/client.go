@@ -15,6 +15,7 @@ type Repo struct {
 	Fork bool `json:"fork"`
 	Archived bool `json:"archived"`
 	DefaultBranch string `json:"default_branch"`
+	SSHUrl string `json:"ssh_url"`
 }
 
 func fetchPage(base string, page int, token string) ([]Repo, error) {
@@ -81,4 +82,14 @@ func ListOrgRepos(org, token string) ([]Repo, error) {
 
 func ListRepos(username, token string) ([]Repo, error) {
 	return listRepos(fmt.Sprintf("https://api.github.com/users/%s/repos", username), token)
+}
+
+// ListPrivateRepos returns all repos the authenticated user has access to,
+// including private repos and repos in orgs they belong to.
+// Requires a valid token — returns an error if token is empty.
+func ListPrivateRepos(token string) ([]Repo, error) {
+	if token == "" {
+		return nil, fmt.Errorf("--include-private requires a token. Set GITHUB_TOKEN or use --token")
+	}
+	return listRepos("https://api.github.com/user/repos", token)
 }
