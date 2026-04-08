@@ -10,6 +10,19 @@ import (
 	"strconv"
 )
 
+func DefaultBranch(repoPath string) (string, error) {
+	out, err := runGitCommand(repoPath, "rev-parse", "--abbrev-ref", "origin/HEAD")
+	if err != nil {
+		return "", err
+	}
+
+	branch := strings.TrimPrefix(out, "origin/")
+	if branch == out {
+		return "", fmt.Errorf("unexpected output from rev-parse: %s", out)
+	}
+	return branch, nil
+}
+
 //git -c <path> fetch origin
 func Fetch(repoPath string) error {
 	_, err := runGitCommand(repoPath, "fetch", "origin")
