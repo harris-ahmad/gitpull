@@ -7,6 +7,7 @@ import (
 
 	"github.com/harris-ahmad/gitpull/git"
 	"github.com/spf13/cobra"
+	"github.com/harris-ahmad/gitpull/ui"
 )
 
 var syncCmd = &cobra.Command{
@@ -33,59 +34,58 @@ var syncCmd = &cobra.Command{
 			branch, err := git.DefaultBranch(repoPath)
 			
 			if err != nil {
-				fmt.Printf("-  %-20s not a git repo, skipped\n", repoPath)
+				fmt.Printf("%s  %-20s not a git repo, skipped\n", ui.Bold("-"), repoPath)
 				skippedOther++
 				continue
 			}
 
 			if err := git.Fetch(repoPath); err != nil {
-				fmt.Printf("-  %-20s failed to fetch: %v\n", repoPath, err)
+				fmt.Printf("%s  %-20s failed to fetch: %v\n", ui.Bold("-"), repoPath, err)
 				skippedOther++
 				continue
 			}
 
 			changes, err := git.LocalChanges(repoPath)
-
 			if err != nil {
-				fmt.Printf("-  %-20s failed to check local changes: %v\n", repoPath, err)
+				fmt.Printf("%s  %-20s failed to check local changes: %v\n", ui.Bold("-"), repoPath, err)
 				skippedOther++
 				continue
 			}
 			if len(changes) > 0 {
-				fmt.Printf("⚠  %-20s local changes — skipped (%s)\n", repoPath, strings.Join(changes, ", "))
+				fmt.Printf("%s  %-20s local changes — skipped (%s)\n", ui.Yellow("⚠"), repoPath, strings.Join(changes, ", "))
 				skippedLocal++
 				continue
 			}
 
 			ahead, err := git.IsAhead(repoPath, branch)
 			if err != nil {
-				fmt.Printf("-  %-20s failed to check if ahead: %v\n", repoPath, err)
+				fmt.Printf("%s  %-20s failed to check if ahead: %v\n", ui.Bold("-"), repoPath, err)
 				skippedOther++
 				continue
 			}
 
 			if !ahead {
-				fmt.Printf("✓  %-20s up to date\n", repoPath)
+				fmt.Printf("%s  %-20s up to date\n", ui.Green("✓"), repoPath)
 				upToDate++
 				continue
 			}
 
 			conflicts, err := git.PredictConflicts(repoPath, branch)
 			if err != nil {
-				fmt.Printf("-  %-20s failed to predict conflicts: %v\n", repoPath, err)
+				fmt.Printf("%s  %-20s failed to predict conflicts: %v\n", ui.Bold("-"), repoPath, err)
 				skippedOther++
 				continue
 			}
 			if len(conflicts) > 0 {
-				fmt.Printf("✗  %-20s conflict predicted — skipped (%s)\n", repoPath, strings.Join(conflicts, ", "))
+				fmt.Printf("%s  %-20s conflict predicted — skipped (%s)\n", ui.Red("✗"), repoPath, strings.Join(conflicts, ", "))
 				skippedConflict++
 				continue
 			}
 
 			if report {
-				fmt.Printf("↓  %-20s safe to pull\n", repoPath)
+				fmt.Printf("%s  %-20s safe to pull\n", ui.Cyan("↓"), repoPath)
 			} else {
-				fmt.Printf("↓  %-20s pulling...", repoPath)
+				fmt.Printf("%s  %-20s pulling...", ui.Cyan("↓"), repoPath)
 				if err := git.Pull(repoPath, branch); err != nil {
 					fmt.Printf(" failed: %v\n", err)
 					skippedOther++
@@ -96,15 +96,15 @@ var syncCmd = &cobra.Command{
 			}
 		}
 
-		summary := "\n--------------------------------\n"
-		summary += fmt.Sprintf("summary: %d repos checked\n", total)
-		summary += fmt.Sprintf("  ✓ %d up to date\n", upToDate)
-		summary += fmt.Sprintf("  ⚠ %d local changes\n", skippedLocal)
-		summary += fmt.Sprintf("  ✗ %d conflicts predicted\n", skippedConflict)
-		summary += fmt.Sprintf("  ↓ %d pulled\n", pulled)
-		summary += "--------------------------------\n"
-		
-		fmt.Println(summary)
+		sep := ui.Bold("────────────────────────────────────")
+		fmt.Println("\n" + sep)
+		fmt.Printf(" %d repos analyzed\n", total)
+		fmt.Printf("  %s %d pulled\n", ui.Cyan("↓"), pulled)
+		fmt.Printf("  %s %d up to date\n", ui.Green("✓"), upToDate)
+		fmt.Printf("  %s %d skipped (local changes)\n", ui.Yellow("⚠"), skippedLocal)
+		fmt.Printf("  %s %d skipped (conflict predicted)\n", ui.Red("✗"), skippedConflict)
+		fmt.Printf("  %s %d errors or not git repos\n", ui.Bold("-"), skippedOther)
+		fmt.Println(sep)
 
 		return nil
 	},
