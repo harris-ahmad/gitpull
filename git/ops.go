@@ -162,6 +162,20 @@ func IncomingCommits(repoPath, branch string) ([]string, error) {
 	return strings.Split(out, "\n"), nil
 }
 
+// AddCommitPush stages all changes, commits with the given message, and pushes.
+func AddCommitPush(repoPath, message string) error {
+	if _, err := runGitCommand(repoPath, "add", "-A"); err != nil {
+		return fmt.Errorf("git add failed: %w", err)
+	}
+	if _, err := runGitCommand(repoPath, "commit", "-m", message); err != nil {
+		return fmt.Errorf("git commit failed: %w", err)
+	}
+	if _, err := runGitCommand(repoPath, "push"); err != nil {
+		return fmt.Errorf("git push failed: %w", err)
+	}
+	return nil
+}
+
 // git -C <path> pull origin <branch>
 func Pull(repoPath string, branch string) error {
 	_, err := runGitCommand(repoPath, "pull", "origin", branch)

@@ -120,6 +120,29 @@ No markdown, no bullet points, just plain text.`,
 	return generate(ollamaURL, model, prompt)
 }
 
+// GenerateCommitMessage suggests a commit message based on the diff of local changes.
+func GenerateCommitMessage(ollamaURL, model, diff string) (string, error) {
+	prompt := fmt.Sprintf(`You are an expert software engineer helping write a git commit message.
+
+Here is the diff of local changes:
+%s
+
+Write a single commit message following the Conventional Commits format:
+<type>(<optional scope>): <short summary>
+
+<optional body explaining what and why, not how — max 2 sentences>
+
+Types: feat, fix, chore, refactor, docs, test, style, perf
+Rules:
+- Summary line must be under 72 characters
+- Be specific — reference actual functions, files, or behaviour changed
+- No markdown, no bullet points, plain text only
+- Output only the commit message, nothing else`,
+		diff,
+	)
+	return generate(ollamaURL, model, prompt)
+}
+
 // GenerateStandup produces a standup summary from a map of repo → commits.
 func GenerateStandup(ollamaURL, model string, repoCommits map[string][]string) (string, error) {
 	var b strings.Builder
