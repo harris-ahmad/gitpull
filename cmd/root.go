@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	"github.com/harris-ahmad/gitpull/config"
 )
 
 var rootCmd = &cobra.Command{
@@ -12,8 +13,16 @@ var rootCmd = &cobra.Command{
 	Short: "Clone and sync GitHub repos with conflict prediction",
 }
 
+var cfg *config.Config
+
 func init() {
-	rootCmd.PersistentFlags().String("token", "", "GitHub API token")
+	var err error
+	cfg, err = config.Load()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not load config: %v\n", err)
+		cfg = &config.Config{Parallel: 4}
+	}
+	rootCmd.PersistentFlags().String("token", cfg.Token, "GitHub API token")
 }
 
 func Execute() {

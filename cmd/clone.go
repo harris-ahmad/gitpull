@@ -106,7 +106,7 @@ var cloneCmd = &cobra.Command{
 }
 
 func init() {
-	cloneCmd.Flags().IntP("parallel", "p", 4, "number of concurrent clones")
+	cloneCmd.Flags().IntP("parallel", "p", cfg.Parallel, "number of concurrent clones")
 	cloneCmd.Flags().Bool("skip-forks", false, "skip forked repos")
 	cloneCmd.Flags().Bool("skip-archived", false, "skip archived repos")
 	rootCmd.AddCommand(cloneCmd)
