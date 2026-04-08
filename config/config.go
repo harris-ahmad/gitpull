@@ -12,9 +12,11 @@ type Config struct {
 	Token string
 	Parallel int
 	SSH bool
+	GeminiKey string
 }
 
 func Load() (*Config, error) {
+
 	//find the file at ~/.gitpullrc using os.UserHomeDir
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -48,6 +50,11 @@ func Load() (*Config, error) {
 		mapped[key] = value
 	}
 
+	geminiKey := os.Getenv("GEMINI_API_KEY")
+	if geminiKey == "" {
+		geminiKey = mapped["gemini_key"]
+	}
+
 	parallel := 4
 	if rawParallel, ok := mapped["parallel"]; ok && rawParallel != "" {
 		parsedParallel, err := strconv.Atoi(rawParallel)
@@ -61,6 +68,7 @@ func Load() (*Config, error) {
 		Token: mapped["token"],
 		Parallel: parallel,
 		SSH: mapped["ssh"] == "true",
+		GeminiKey: geminiKey,
 	}, nil
 
 }
