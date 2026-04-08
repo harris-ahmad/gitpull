@@ -139,6 +139,66 @@ func Pull(repoPath string, branch string) error {
 	return err
 }
 
+// RepoContext collects a concise summary of a repo's state for AI context.
+// Skips repos with no recent activity to keep the prompt small.
+func RepoContext(repoPath string) (string, error) {
+	var b strings.Builder
+
+	// current branch
+	branch, err := runGitCommand(repoPath, "rev-parse", "--abbrev-ref", "HEAD")
+	if err != nil {
+		return "", err
+	}
+
+	// local changes
+	var localFiles []string
+	status, _ := runGitCommand(repoPath, "status", "--porcelain")
+	if status != "" {
+		for _, line := range strings.Split(status, "\n") {
+			line = strings.TrimRight(line, "\r")
+			if len(line) >= 3 {
+				localFiles = append(localFiles, strings.TrimSpace(line[3:]))
+			}
+		}
+	}
+
+	// commits behind
+	behindCount := "0"
+	defaultBranch, err := DefaultBranch(repoPath)
+	if err == nil {
+		behind, _ := runGitCommand(repoPath, "rev-list", "HEAD..origin/"+defaultBranch, "--count")
+		behindCount = strings.TrimSpace(behind)
+	}
+
+	// commits from the last 7 days only
+	log, _ := runGitCommand(repoPath, "log", "--oneline", "--since=7 days ago", "-5")
+
+	// skip repos with zero recent activity
+	if len(localFiles) == 0 && behindCount == "0" && log == "" {
+		return "", nil
+	}
+
+	b.WriteString("repo: " + repoPath + "\n")
+	b.WriteString("branch: " + branch + "\n")
+
+	if len(localFiles) > 0 {
+		b.WriteString("local changes: " + strings.Join(localFiles, ", ") + "\n")
+	} else {
+		b.WriteString("local changes: none\n")
+	}
+
+	b.WriteString("commits behind: " + behindCount + "\n")
+
+	if log != "" {
+		b.WriteString("recent commits:\n")
+		for _, line := range strings.Split(log, "\n") {
+			b.WriteString("  " + line + "\n")
+		}
+	}
+
+	return b.String(), nil
+}
+
 func runGitCommand(dir string, args ...string) (string, error) {
 	fullArgs := append([]string{"-C", dir}, args...)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

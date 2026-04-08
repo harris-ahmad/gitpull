@@ -61,7 +61,27 @@ func generate(ollamaURL, model, prompt string) (string, error) {
 		return "", fmt.Errorf("Ollama error: %s", result.Error)
 	}
 
-	return strings.TrimSpace(result.Response), nil
+	return stripMarkdown(strings.TrimSpace(result.Response)), nil
+}
+
+// stripMarkdown removes common markdown formatting so output renders cleanly in the terminal.
+func stripMarkdown(s string) string {
+	var lines []string
+	for _, line := range strings.Split(s, "\n") {
+		// remove bold/italic markers
+		line = strings.ReplaceAll(line, "**", "")
+		line = strings.ReplaceAll(line, "__", "")
+		line = strings.ReplaceAll(line, "*", "")
+		// convert markdown bullets to a clean dash
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "- ") || strings.HasPrefix(trimmed, "• ") {
+			line = "  " + trimmed
+		}
+		// strip inline code backticks
+		line = strings.ReplaceAll(line, "`", "")
+		lines = append(lines, line)
+	}
+	return strings.Join(lines, "\n")
 }
 
 // ExplainConflict explains why a merge conflict exists and how to resolve it.
@@ -96,6 +116,24 @@ func SummarizeCommits(ollamaURL, model string, commits []string) (string, error)
 Summarize what these changes do in 1-2 sentences. Be concise and specific.
 No markdown, no bullet points, just plain text.`,
 		strings.Join(commits, "\n"),
+	)
+	return generate(ollamaURL, model, prompt)
+}
+
+// Answer responds to a natural language question about the user's repos using gathered context.
+func Answer(ollamaURL, model, context, question string) (string, error) {
+	prompt := fmt.Sprintf(`You are an assistant helping a developer manage their Git repositories.
+
+Here is the current state of their repositories:
+%s
+
+The developer asks: %s
+
+Answer based only on the repository data above. Be specific and concise.
+Reference exact repo names, branch names, and commit messages from the data.
+Do not make up information that isn't in the data. Plain text only.`,
+		context,
+		question,
 	)
 	return generate(ollamaURL, model, prompt)
 }
