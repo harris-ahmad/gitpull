@@ -42,6 +42,7 @@ func LocalChanges(repoPath string) ([]string, error) {
 
 	changes := []string{}
 	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimRight(line, "\r")
 		if len(line) < 3 {
 			continue
 		}

@@ -16,14 +16,15 @@ func cloneRepo(repo github.Repo) error {
 		return nil
 	}
 
-	cmd := exec.Command("git", "clone", repo.CloneURL, repo.Name)
-	cmd.Stdout = os.Stdout
+	fmt.Printf("cloning  %s...\n", repo.Name)
+	cmd := exec.Command("git", "clone", "--quiet", repo.CloneURL, repo.Name)
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to clone %s: %w", repo.Name, err)
 	}
 
+	fmt.Printf("done     %s\n", repo.Name)
 	return nil
 }
 
