@@ -9,10 +9,12 @@ import (
 )
 
 type Config struct {
-	Token string
-	Parallel int
-	SSH bool
-	GeminiKey string
+	Token      string
+	Parallel   int
+	SSH        bool
+	GeminiKey  string // kept for future use
+	OllamaURL  string
+	OllamaModel string
 }
 
 func Load() (*Config, error) {
@@ -27,7 +29,13 @@ func Load() (*Config, error) {
 	lines, err := os.ReadFile(filePath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return &Config{Parallel: 4}, nil
+			return &Config{
+				Parallel:    4,
+				Token:       os.Getenv("GITHUB_TOKEN"),
+				GeminiKey:   os.Getenv("GEMINI_API_KEY"),
+				OllamaURL:   "http://localhost:11434",
+				OllamaModel: "llama3.2",
+			}, nil
 		}
 		return nil, fmt.Errorf("failed to read .gitpullrc: %w", err)
 	}
@@ -64,11 +72,22 @@ func Load() (*Config, error) {
 		parallel = parsedParallel
 	}
 
+	ollamaURL := mapped["ollama_url"]
+	if ollamaURL == "" {
+		ollamaURL = "http://localhost:11434"
+	}
+	ollamaModel := mapped["ollama_model"]
+	if ollamaModel == "" {
+		ollamaModel = "llama3.2"
+	}
+
 	return &Config{
-		Token: mapped["token"],
-		Parallel: parallel,
-		SSH: mapped["ssh"] == "true",
-		GeminiKey: geminiKey,
+		Token:       mapped["token"],
+		Parallel:    parallel,
+		SSH:         mapped["ssh"] == "true",
+		GeminiKey:   geminiKey,
+		OllamaURL:   ollamaURL,
+		OllamaModel: ollamaModel,
 	}, nil
 
 }

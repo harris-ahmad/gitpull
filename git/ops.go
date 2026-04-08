@@ -94,6 +94,18 @@ func PredictConflicts(repoPath string, branch string) ([]string, error) {
 	return conflicts, nil
 }
 
+// git -C <path> log HEAD..origin/<branch> --oneline
+func IncomingCommits(repoPath, branch string) ([]string, error) {
+	out, err := runGitCommand(repoPath, "log", "HEAD..origin/"+branch, "--oneline")
+	if err != nil {
+		return nil, err
+	}
+	if out == "" {
+		return []string{}, nil
+	}
+	return strings.Split(out, "\n"), nil
+}
+
 // git -C <path> pull origin <branch>
 func Pull(repoPath string, branch string) error {
 	_, err := runGitCommand(repoPath, "pull", "origin", branch)
