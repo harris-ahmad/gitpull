@@ -120,6 +120,31 @@ No markdown, no bullet points, just plain text.`,
 	return generate(ollamaURL, model, prompt)
 }
 
+// GenerateStandup produces a standup summary from a map of repo → commits.
+func GenerateStandup(ollamaURL, model string, repoCommits map[string][]string) (string, error) {
+	var b strings.Builder
+	for repo, commits := range repoCommits {
+		b.WriteString("repo: " + repo + "\n")
+		for _, c := range commits {
+			b.WriteString("  - " + c + "\n")
+		}
+	}
+
+	prompt := fmt.Sprintf(`You are helping a software developer write their daily standup update.
+
+Here are the commits they made, grouped by repository:
+%s
+
+Rules:
+- Exactly one sentence per repository. Never repeat a repository name.
+- Start each sentence with the repo name followed by a colon, e.g. "gitpull: I..."
+- Be specific — reference actual features or fixes from the commits.
+- No introduction, no header, no markdown. Output the sentences directly.`,
+		b.String(),
+	)
+	return generate(ollamaURL, model, prompt)
+}
+
 // Answer responds to a natural language question about the user's repos using gathered context.
 func Answer(ollamaURL, model, context, question string) (string, error) {
 	prompt := fmt.Sprintf(`You are an assistant helping a developer manage their Git repositories.

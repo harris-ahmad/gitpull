@@ -10,6 +10,35 @@ import (
 	"strconv"
 )
 
+// GitUserEmail returns the user's git email from global config.
+func GitUserEmail() (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", "config", "user.email")
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("could not get git user.email: %w", err)
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// MyRecentCommits returns commits by the current user since the given time string (e.g. "24 hours ago").
+func MyRecentCommits(repoPath, since, email string) ([]string, error) {
+	out, err := runGitCommand(repoPath,
+		"log",
+		"--oneline",
+		"--since="+since,
+		"--author="+email,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if out == "" {
+		return []string{}, nil
+	}
+	return strings.Split(out, "\n"), nil
+}
+
 func DefaultBranch(repoPath string) (string, error) {
 	out, err := runGitCommand(repoPath, "rev-parse", "--abbrev-ref", "origin/HEAD")
 	if err != nil {
