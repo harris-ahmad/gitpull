@@ -13,15 +13,18 @@ var rootCmd = &cobra.Command{
 	Short: "Clone and sync GitHub repos with conflict prediction",
 }
 
-var cfg *config.Config
+var cfg = mustLoadConfig()
 
-func init() {
-	var err error
-	cfg, err = config.Load()
+func mustLoadConfig() *config.Config {
+	cfg, err := config.Load()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "warning: could not load config: %v\n", err)
-		cfg = &config.Config{Parallel: 4}
+		return &config.Config{Parallel: 4}
 	}
+	return cfg
+}
+
+func init() {
 	rootCmd.PersistentFlags().String("token", cfg.Token, "GitHub API token")
 }
 

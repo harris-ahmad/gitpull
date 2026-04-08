@@ -114,5 +114,5 @@ func runGitCommand(dir string, args ...string) (string, error) {
 		return "", fmt.Errorf("%w: %s", err, stderr.String())
 	}
 	
-	return strings.TrimSpace(stdout.String()), nil
+	return strings.TrimRight(stdout.String(), "\n\r"), nil
 }
