@@ -94,6 +94,33 @@ func PredictConflicts(repoPath string, branch string) ([]string, error) {
 	return conflicts, nil
 }
 
+// LocalDiff returns the full diff of uncommitted local changes.
+func LocalDiff(repoPath string) (string, error) {
+	out, err := runGitCommand(repoPath, "diff", "HEAD")
+	if err != nil {
+		return "", err
+	}
+	if len(out) > 4000 {
+		out = out[:4000] + "\n... (truncated)"
+	}
+	return out, nil
+}
+
+// ConflictDiff returns the diff between HEAD and origin/<branch> for the given files.
+// This is passed to the AI so it has real context to explain the conflict.
+func ConflictDiff(repoPath, branch string, files []string) (string, error) {
+	args := append([]string{"diff", "HEAD..origin/" + branch, "--"}, files...)
+	out, err := runGitCommand(repoPath, args...)
+	if err != nil {
+		return "", err
+	}
+	// truncate to 4000 chars to avoid overwhelming the model
+	if len(out) > 4000 {
+		out = out[:4000] + "\n... (truncated)"
+	}
+	return out, nil
+}
+
 // git -C <path> log HEAD..origin/<branch> --oneline
 func IncomingCommits(repoPath, branch string) ([]string, error) {
 	out, err := runGitCommand(repoPath, "log", "HEAD..origin/"+branch, "--oneline")

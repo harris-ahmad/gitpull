@@ -28,6 +28,10 @@ func init() {
 	rootCmd.PersistentFlags().String("token", cfg.Token, "GitHub API token")
 }
 
+func SetVersion(v string) {
+	rootCmd.Version = v
+}
+
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)

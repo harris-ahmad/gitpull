@@ -78,7 +78,7 @@ func Load() (*Config, error) {
 	}
 	ollamaModel := mapped["ollama_model"]
 	if ollamaModel == "" {
-		ollamaModel = "llama3.2"
+		ollamaModel = "mistral"
 	}
 
 	return &Config{

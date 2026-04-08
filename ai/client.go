@@ -10,7 +10,7 @@ import (
 )
 
 const defaultOllamaURL = "http://localhost:11434"
-const defaultModel = "llama3.2"
+const defaultModel = "mistral"
 
 type ollamaRequest struct {
 	Model  string `json:"model"`
@@ -66,14 +66,22 @@ func generate(ollamaURL, model, prompt string) (string, error) {
 
 // ExplainConflict explains why a merge conflict exists and how to resolve it.
 func ExplainConflict(ollamaURL, model string, conflictingFiles []string, diff string) (string, error) {
-	prompt := fmt.Sprintf(`You are a Git expert. The following files have merge conflicts:
+	prompt := fmt.Sprintf(`You are a Git expert helping a developer resolve merge conflicts.
+
+Conflicting files:
 %s
 
-Here is the relevant diff:
+Diff between local HEAD and remote branch:
 %s
 
-Explain in plain English why these conflicts exist and how to resolve them.
-Be concise — 3-5 sentences max. No markdown, no bullet points, just plain text.`,
+Analyze the diff carefully and do the following:
+1. For each conflicting file, identify the exact line numbers or functions where the conflict occurs.
+2. Explain what change was made locally vs what the remote introduced.
+3. Explain why these two changes conflict.
+4. Suggest the most likely correct resolution.
+
+Be specific — reference actual function names, variable names, and line numbers from the diff.
+Plain text only, no markdown.`,
 		strings.Join(conflictingFiles, "\n"),
 		diff,
 	)
@@ -92,15 +100,18 @@ No markdown, no bullet points, just plain text.`,
 	return generate(ollamaURL, model, prompt)
 }
 
-// SuggestActions suggests what the developer should do based on a sync status report.
-func SuggestActions(ollamaURL, model string, summary string) (string, error) {
-	prompt := fmt.Sprintf(`You are a Git expert helping a developer manage multiple repositories.
-Here is the current sync status of their repos:
+// SummarizeLocalChanges explains what the developer was working on based on their local diff.
+func SummarizeLocalChanges(ollamaURL, model string, diff string) (string, error) {
+	prompt := fmt.Sprintf(`You are a Git expert. A developer has uncommitted local changes in a repository.
+
+Here is the diff of their local changes:
 %s
 
-Give 2-3 short, specific, actionable suggestions for what they should do next.
-No markdown, no bullet points, just plain numbered sentences.`,
-		summary,
+In 1-2 sentences, summarize what the developer was working on based on these changes.
+Be specific — mention the files, functions, or concepts involved.
+Do not give advice or suggest commands. Just describe what they were doing.
+Plain text only.`,
+		diff,
 	)
 	return generate(ollamaURL, model, prompt)
 }
