@@ -164,23 +164,29 @@ func GenerateStandup(ollamaURL, model string, repoCommits map[string][]string) (
 	}
 
 	var b strings.Builder
+	repos := make([]string, 0, len(repoCommits))
 	for repo, commits := range repoCommits {
-		b.WriteString("repo: " + repo + "\n")
+		repos = append(repos, repo)
+		b.WriteString("REPO: " + repo + "\n")
+		b.WriteString("COMMITS:\n")
 		for _, c := range commits {
 			b.WriteString("  - " + c + "\n")
 		}
+		b.WriteString("\n")
 	}
 
 	prompt := fmt.Sprintf(`You are helping a developer write their daily standup.
 
-Commits grouped by repository:
-%s
+There are %d repositories: %s
 
-Rules:
-- Exactly one sentence per repository. Never repeat a repository name.
-- Start each sentence with the repo name followed by a colon, e.g. "gitpull: I..."
-- Be specific — reference actual features or fixes from the commits.
-- No introduction, no header, no markdown. Output the sentences directly.`,
+For each repository, the commits made today are listed below:
+%s
+Write exactly one standup sentence per repository.
+Each sentence must start with the repository name followed by a colon.
+Summarize what was worked on based only on the commits listed — do not invent work.
+Output only the sentences, no introduction, no markdown.`,
+		len(repos),
+		strings.Join(repos, ", "),
 		b.String(),
 	)
 

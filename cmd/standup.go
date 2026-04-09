@@ -20,11 +20,6 @@ var standupCmd = &cobra.Command{
 			return fmt.Errorf("Ollama is not running. Start it with: ollama serve\nThen pull a model: ollama pull mistral")
 		}
 
-		email, err := git.GitUserEmail()
-		if err != nil {
-			return fmt.Errorf("could not determine git user: %w", err)
-		}
-
 		dirs, err := os.ReadDir(".")
 		if err != nil {
 			return fmt.Errorf("failed to read current directory: %w", err)
@@ -37,7 +32,7 @@ var standupCmd = &cobra.Command{
 			if !dir.IsDir() {
 				continue
 			}
-			commits, err := git.MyRecentCommits(dir.Name(), since, email)
+			commits, err := git.MyRecentCommits(dir.Name(), since)
 			if err != nil || len(commits) == 0 {
 				continue
 			}
@@ -49,7 +44,7 @@ var standupCmd = &cobra.Command{
 		}
 
 		if len(repoCommits) == 0 {
-			fmt.Printf("No commits found in the last %s under %s.\n", since, email)
+			fmt.Printf("No commits found in the last %s.\n", since)
 			return nil
 		}
 

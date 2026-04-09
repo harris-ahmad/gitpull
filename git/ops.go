@@ -47,13 +47,12 @@ func GitUserEmail() (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// MyRecentCommits returns commits by the current user since the given time string (e.g. "24 hours ago").
-func MyRecentCommits(repoPath, since, email string) ([]string, error) {
+// MyRecentCommits returns commits since the given time string (e.g. "24 hours ago").
+func MyRecentCommits(repoPath, since string) ([]string, error) {
 	out, err := runGitCommand(repoPath,
 		"log",
 		"--oneline",
 		"--since="+since,
-		"--author="+email,
 	)
 	if err != nil {
 		return nil, err
