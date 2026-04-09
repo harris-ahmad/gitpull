@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/harris-ahmad/gitpull/git"
@@ -21,42 +20,34 @@ var stashPushCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		message, _ := cmd.Flags().GetString("message")
 
-		dirs, err := os.ReadDir(".")
+		repos, err := repoList()
 		if err != nil {
-			return fmt.Errorf("failed to read current directory: %w", err)
+			return err
 		}
 
 		colWidth := 20
-		for _, dir := range dirs {
-			if dir.IsDir() && len(dir.Name()) > colWidth {
-				colWidth = len(dir.Name())
+		for _, r := range repos {
+			if len(r.Name) > colWidth {
+				colWidth = len(r.Name)
 			}
 		}
 		colWidth += 2
 
 		var stashed, skipped int
 
-		for _, dir := range dirs {
-			if !dir.IsDir() {
+		for _, repo := range repos {
+			changes, err := git.LocalChanges(repo.Path)
+			if err != nil || len(changes) == 0 {
 				continue
 			}
-			repoPath := dir.Name()
 
-			changes, err := git.LocalChanges(repoPath)
-			if err != nil {
-				continue // not a git repo
-			}
-			if len(changes) == 0 {
-				continue // nothing to stash
-			}
-
-			if err := git.Stash(repoPath, message); err != nil {
-				fmt.Printf("%s  %-*s  failed to stash: %v\n", ui.Red("✗"), colWidth, repoPath, err)
+			if err := git.Stash(repo.Path, message); err != nil {
+				fmt.Printf("%s  %-*s  failed to stash: %v\n", ui.Red("✗"), colWidth, repo.Name, err)
 				skipped++
 				continue
 			}
 
-			fmt.Printf("%s  %-*s  stashed (%s)\n", ui.Green("✓"), colWidth, repoPath, strings.Join(changes, ", "))
+			fmt.Printf("%s  %-*s  stashed (%s)\n", ui.Green("✓"), colWidth, repo.Name, strings.Join(changes, ", "))
 			stashed++
 		}
 
@@ -74,39 +65,34 @@ var stashPopCmd = &cobra.Command{
 	Use:   "pop",
 	Short: "Restore stashed changes in all repos that have a stash",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		dirs, err := os.ReadDir(".")
+		repos, err := repoList()
 		if err != nil {
-			return fmt.Errorf("failed to read current directory: %w", err)
+			return err
 		}
 
 		colWidth := 20
-		for _, dir := range dirs {
-			if dir.IsDir() && len(dir.Name()) > colWidth {
-				colWidth = len(dir.Name())
+		for _, r := range repos {
+			if len(r.Name) > colWidth {
+				colWidth = len(r.Name)
 			}
 		}
 		colWidth += 2
 
 		var popped, skipped int
 
-		for _, dir := range dirs {
-			if !dir.IsDir() {
-				continue
-			}
-			repoPath := dir.Name()
-
-			has, err := git.HasStash(repoPath)
+		for _, repo := range repos {
+			has, err := git.HasStash(repo.Path)
 			if err != nil || !has {
 				continue
 			}
 
-			if err := git.StashPop(repoPath); err != nil {
-				fmt.Printf("%s  %-*s  failed to pop: %v\n", ui.Red("✗"), colWidth, repoPath, err)
+			if err := git.StashPop(repo.Path); err != nil {
+				fmt.Printf("%s  %-*s  failed to pop: %v\n", ui.Red("✗"), colWidth, repo.Name, err)
 				skipped++
 				continue
 			}
 
-			fmt.Printf("%s  %-*s  restored\n", ui.Green("✓"), colWidth, repoPath)
+			fmt.Printf("%s  %-*s  restored\n", ui.Green("✓"), colWidth, repo.Name)
 			popped++
 		}
 

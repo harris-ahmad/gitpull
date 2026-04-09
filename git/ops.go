@@ -1,13 +1,14 @@
 package git
 
 import (
-	"fmt"
-	"os/exec"
-	"context"
-	"time"
 	"bytes"
-	"strings"
+	"context"
+	"fmt"
+	"os"
+	"os/exec"
 	"strconv"
+	"strings"
+	"time"
 )
 
 // CleanDryRun returns the list of untracked files/dirs that would be removed.
@@ -84,6 +85,29 @@ func MyRecentCommits(repoPath, since string) ([]string, error) {
 		return []string{}, nil
 	}
 	return strings.Split(out, "\n"), nil
+}
+
+// CurrentBranch returns the active branch name for the repo.
+func CurrentBranch(repoPath string) (string, error) {
+	return runGitCommand(repoPath, "rev-parse", "--abbrev-ref", "HEAD")
+}
+
+// CreateBranch creates a new branch in the repo.
+func CreateBranch(repoPath, name string) error {
+	_, err := runGitCommand(repoPath, "checkout", "-b", name)
+	return err
+}
+
+// SwitchBranch checks out an existing branch in the repo.
+func SwitchBranch(repoPath, name string) error {
+	_, err := runGitCommand(repoPath, "checkout", name)
+	return err
+}
+
+// DeleteBranch deletes a branch in the repo.
+func DeleteBranch(repoPath, name string) error {
+	_, err := runGitCommand(repoPath, "branch", "-d", name)
+	return err
 }
 
 func DefaultBranch(repoPath string) (string, error) {
@@ -300,6 +324,12 @@ func RepoContext(repoPath string) (string, error) {
 	}
 
 	return b.String(), nil
+}
+
+// IsRepo returns true if the directory contains a .git folder.
+func IsRepo(path string) bool {
+	info, err := os.Stat(path + "/.git")
+	return err == nil && info.IsDir()
 }
 
 func runGitCommand(dir string, args ...string) (string, error) {

@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/harris-ahmad/gitpull/ai"
@@ -18,56 +17,50 @@ var syncCmd = &cobra.Command{
 		report, _ := cmd.Flags().GetBool("report")
 		useAI, _ := cmd.Flags().GetBool("ai")
 
-		dirs, err := os.ReadDir(".")
+		repos, err := repoList()
 		if err != nil {
-			return fmt.Errorf("failed to read current directory: %w", err)
+			return err
 		}
 
 		var total, pulled, upToDate, skippedLocal, skippedConflict, skippedOther int
 
 		colWidth := 20
-		for _, dir := range dirs {
-			if dir.IsDir() && len(dir.Name()) > colWidth {
-				colWidth = len(dir.Name())
+		for _, r := range repos {
+			if len(r.Name) > colWidth {
+				colWidth = len(r.Name)
 			}
 		}
 		colWidth += 2
 
-		for _, dir := range dirs {
-			if !dir.IsDir() {
-				continue
-			}
-
+		for _, repo := range repos {
 			total++
-			repoPath := dir.Name()
 
-			branch, err := git.DefaultBranch(repoPath)
+			branch, err := git.DefaultBranch(repo.Path)
 			if err != nil {
-				fmt.Printf("%s  %-*s  not a git repo, skipped\n", ui.Bold("-"), colWidth, repoPath)
+				fmt.Printf("%s  %-*s  not a git repo, skipped\n", ui.Bold("-"), colWidth, repo.Name)
 				skippedOther++
 				continue
 			}
 
-			if err := git.Fetch(repoPath); err != nil {
-				fmt.Printf("%s  %-*s  failed to fetch: %v\n", ui.Bold("-"), colWidth, repoPath, err)
+			if err := git.Fetch(repo.Path); err != nil {
+				fmt.Printf("%s  %-*s  failed to fetch: %v\n", ui.Bold("-"), colWidth, repo.Name, err)
 				skippedOther++
 				continue
 			}
 
-			changes, err := git.LocalChanges(repoPath)
+			changes, err := git.LocalChanges(repo.Path)
 			if err != nil {
-				fmt.Printf("%s  %-*s  failed to check local changes: %v\n", ui.Bold("-"), colWidth, repoPath, err)
+				fmt.Printf("%s  %-*s  failed to check local changes: %v\n", ui.Bold("-"), colWidth, repo.Name, err)
 				skippedOther++
 				continue
 			}
 			if len(changes) > 0 {
-				fmt.Printf("%s  %-*s  local changes — skipped (%s)\n", ui.Yellow("⚠"), colWidth, repoPath, strings.Join(changes, ", "))
+				fmt.Printf("%s  %-*s  local changes — skipped (%s)\n", ui.Yellow("⚠"), colWidth, repo.Name, strings.Join(changes, ", "))
 				skippedLocal++
 
-				// AI: summarize what the developer was working on
 				if useAI {
 					fmt.Printf("    %s summarizing local changes...\n", ui.Cyan("AI"))
-					diff, _ := git.LocalDiff(repoPath)
+					diff, _ := git.LocalDiff(repo.Path)
 					if diff != "" {
 						summary, err := ai.SummarizeLocalChanges(cfg.OllamaURL, cfg.OllamaModel, diff)
 						if err != nil {
@@ -80,33 +73,32 @@ var syncCmd = &cobra.Command{
 				continue
 			}
 
-			ahead, err := git.IsAhead(repoPath, branch)
+			ahead, err := git.IsAhead(repo.Path, branch)
 			if err != nil {
-				fmt.Printf("%s  %-*s  failed to check if ahead: %v\n", ui.Bold("-"), colWidth, repoPath, err)
+				fmt.Printf("%s  %-*s  failed to check if ahead: %v\n", ui.Bold("-"), colWidth, repo.Name, err)
 				skippedOther++
 				continue
 			}
 
 			if !ahead {
-				fmt.Printf("%s  %-*s  up to date\n", ui.Green("✓"), colWidth, repoPath)
+				fmt.Printf("%s  %-*s  up to date\n", ui.Green("✓"), colWidth, repo.Name)
 				upToDate++
 				continue
 			}
 
-			conflicts, err := git.PredictConflicts(repoPath, branch)
+			conflicts, err := git.PredictConflicts(repo.Path, branch)
 			if err != nil {
-				fmt.Printf("%s  %-*s  failed to predict conflicts: %v\n", ui.Bold("-"), colWidth, repoPath, err)
+				fmt.Printf("%s  %-*s  failed to predict conflicts: %v\n", ui.Bold("-"), colWidth, repo.Name, err)
 				skippedOther++
 				continue
 			}
 			if len(conflicts) > 0 {
-				fmt.Printf("%s  %-*s  conflict predicted — skipped (%s)\n", ui.Red("✗"), colWidth, repoPath, strings.Join(conflicts, ", "))
+				fmt.Printf("%s  %-*s  conflict predicted — skipped (%s)\n", ui.Red("✗"), colWidth, repo.Name, strings.Join(conflicts, ", "))
 				skippedConflict++
 
-				// AI: explain the conflict
 				if useAI {
 					fmt.Printf("    %s analyzing conflict...\n", ui.Cyan("AI"))
-					diff, _ := git.ConflictDiff(repoPath, branch, conflicts)
+					diff, _ := git.ConflictDiff(repo.Path, branch, conflicts)
 					explanation, err := ai.ExplainConflict(cfg.OllamaURL, cfg.OllamaModel, conflicts, diff)
 					if err != nil {
 						fmt.Printf("    %s could not explain conflict: %v\n", ui.Yellow("AI"), err)
@@ -117,9 +109,8 @@ var syncCmd = &cobra.Command{
 				continue
 			}
 
-			// safe to pull — summarize incoming commits
 			if useAI {
-				commits, err := git.IncomingCommits(repoPath, branch)
+				commits, err := git.IncomingCommits(repo.Path, branch)
 				if err == nil && len(commits) > 0 {
 					summary, err := ai.SummarizeCommits(cfg.OllamaURL, cfg.OllamaModel, commits)
 					if err == nil {
@@ -129,10 +120,10 @@ var syncCmd = &cobra.Command{
 			}
 
 			if report {
-				fmt.Printf("%s  %-*s  safe to pull\n", ui.Cyan("↓"), colWidth, repoPath)
+				fmt.Printf("%s  %-*s  safe to pull\n", ui.Cyan("↓"), colWidth, repo.Name)
 			} else {
-				fmt.Printf("%s  %-*s  pulling...", ui.Cyan("↓"), colWidth, repoPath)
-				if err := git.Pull(repoPath, branch); err != nil {
+				fmt.Printf("%s  %-*s  pulling...", ui.Cyan("↓"), colWidth, repo.Name)
+				if err := git.Pull(repo.Path, branch); err != nil {
 					fmt.Printf(" failed: %v\n", err)
 					skippedOther++
 					continue

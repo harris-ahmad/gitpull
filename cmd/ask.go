@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/harris-ahmad/gitpull/ai"
@@ -25,21 +24,18 @@ var askCmd = &cobra.Command{
 			return fmt.Errorf("Ollama is not running. Start it with: ollama serve\nThen pull a model: ollama pull mistral")
 		}
 
-		dirs, err := os.ReadDir(".")
+		repos, err := repoList()
 		if err != nil {
-			return fmt.Errorf("failed to read current directory: %w", err)
+			return err
 		}
 
 		fmt.Printf("%s gathering repo context...\n", ui.Cyan("AI"))
 
 		var contextParts []string
-		for _, dir := range dirs {
-			if !dir.IsDir() {
-				continue
-			}
-			ctx, err := git.RepoContext(dir.Name())
+		for _, repo := range repos {
+			ctx, err := git.RepoContext(repo.Path)
 			if err != nil || ctx == "" {
-				continue // not a git repo or no activity, skip
+				continue
 			}
 			contextParts = append(contextParts, ctx)
 		}

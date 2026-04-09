@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/harris-ahmad/gitpull/git"
 	"github.com/harris-ahmad/gitpull/ui"
@@ -15,30 +14,25 @@ var cleanCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		force, _ := cmd.Flags().GetBool("force")
 
-		dirs, err := os.ReadDir(".")
+		repos, err := repoList()
 		if err != nil {
-			return fmt.Errorf("failed to read current directory: %w", err)
+			return err
 		}
 
 		colWidth := 20
-		for _, dir := range dirs {
-			if dir.IsDir() && len(dir.Name()) > colWidth {
-				colWidth = len(dir.Name())
+		for _, r := range repos {
+			if len(r.Name) > colWidth {
+				colWidth = len(r.Name)
 			}
 		}
 		colWidth += 2
 
 		var cleaned, skipped, empty int
 
-		for _, dir := range dirs {
-			if !dir.IsDir() {
-				continue
-			}
-			repoPath := dir.Name()
-
-			files, err := git.CleanDryRun(repoPath)
+		for _, repo := range repos {
+			files, err := git.CleanDryRun(repo.Path)
 			if err != nil {
-				continue // not a git repo
+				continue
 			}
 			if len(files) == 0 {
 				empty++
@@ -46,20 +40,20 @@ var cleanCmd = &cobra.Command{
 			}
 
 			if !force {
-				fmt.Printf("%s  %-*s  would remove:\n", ui.Yellow("~"), colWidth, repoPath)
+				fmt.Printf("%s  %-*s  would remove:\n", ui.Yellow("~"), colWidth, repo.Name)
 				for _, f := range files {
 					fmt.Printf("    %s\n", f)
 				}
 				continue
 			}
 
-			if err := git.Clean(repoPath); err != nil {
-				fmt.Printf("%s  %-*s  failed: %v\n", ui.Red("✗"), colWidth, repoPath, err)
+			if err := git.Clean(repo.Path); err != nil {
+				fmt.Printf("%s  %-*s  failed: %v\n", ui.Red("✗"), colWidth, repo.Name, err)
 				skipped++
 				continue
 			}
 
-			fmt.Printf("%s  %-*s  removed %d file(s)\n", ui.Green("✓"), colWidth, repoPath, len(files))
+			fmt.Printf("%s  %-*s  removed %d file(s)\n", ui.Green("✓"), colWidth, repo.Name, len(files))
 			cleaned++
 		}
 

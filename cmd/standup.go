@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/harris-ahmad/gitpull/ai"
 	"github.com/harris-ahmad/gitpull/git"
@@ -20,27 +19,23 @@ var standupCmd = &cobra.Command{
 			return fmt.Errorf("Ollama is not running. Start it with: ollama serve\nThen pull a model: ollama pull mistral")
 		}
 
-		dirs, err := os.ReadDir(".")
+		repos, err := repoList()
 		if err != nil {
-			return fmt.Errorf("failed to read current directory: %w", err)
+			return err
 		}
 
 		fmt.Printf("%s collecting commits since %s...\n", ui.Cyan("AI"), since)
 
 		repoCommits := make(map[string][]string)
-		for _, dir := range dirs {
-			if !dir.IsDir() {
-				continue
-			}
-			commits, err := git.MyRecentCommits(dir.Name(), since)
+		for _, repo := range repos {
+			commits, err := git.MyRecentCommits(repo.Path, since)
 			if err != nil || len(commits) == 0 {
 				continue
 			}
-			// cap at 5 commits per repo to avoid overwhelming the model
 			if len(commits) > 5 {
 				commits = commits[:5]
 			}
-			repoCommits[dir.Name()] = commits
+			repoCommits[repo.Name] = commits
 		}
 
 		if len(repoCommits) == 0 {
@@ -48,10 +43,9 @@ var standupCmd = &cobra.Command{
 			return nil
 		}
 
-		// print raw commits first
 		fmt.Println()
 		for repo, commits := range repoCommits {
-			fmt.Printf("%s %s\n", ui.Bold(repo), "")
+			fmt.Printf("%s\n", ui.Bold(repo))
 			for _, c := range commits {
 				fmt.Printf("  %s\n", c)
 			}

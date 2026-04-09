@@ -16,21 +16,16 @@ var diffCmd = &cobra.Command{
 	Use:   "diff",
 	Short: "Show staged and unstaged changes across all repos",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		dirs, err := os.ReadDir(".")
+		repos, err := repoList()
 		if err != nil {
-			return fmt.Errorf("failed to read current directory: %w", err)
+			return err
 		}
 
 		var buf bytes.Buffer
 		found := false
 
-		for _, dir := range dirs {
-			if !dir.IsDir() {
-				continue
-			}
-			repoPath := dir.Name()
-
-			diff, err := git.Diff(repoPath)
+		for _, repo := range repos {
+			diff, err := git.Diff(repo.Path)
 			if err != nil || diff == "" {
 				continue
 			}
@@ -38,7 +33,7 @@ var diffCmd = &cobra.Command{
 			found = true
 			header := fmt.Sprintf("\n%s\n%s\n%s\n",
 				ui.Bold("════════════════════════════════════"),
-				ui.Bold("  repo: "+repoPath),
+				ui.Bold("  repo: "+repo.Name),
 				ui.Bold("════════════════════════════════════"),
 			)
 			buf.WriteString(header)
@@ -62,12 +57,10 @@ func page(content string) error {
 		pager = "less"
 	}
 
-	// split pager into command + args (e.g. "less -R")
 	parts := strings.Fields(pager)
 	name := parts[0]
 	pagerArgs := parts[1:]
 
-	// always pass -R so ANSI colour codes render
 	if name == "less" && !contains(pagerArgs, "-R") {
 		pagerArgs = append(pagerArgs, "-R")
 	}

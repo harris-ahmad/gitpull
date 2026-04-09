@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/harris-ahmad/gitpull/git"
@@ -14,39 +13,34 @@ var statusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Quick dirty/clean check for all repos in the current directory",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		dirs, err := os.ReadDir(".")
+		repos, err := repoList()
 		if err != nil {
-			return fmt.Errorf("failed to read current directory: %w", err)
+			return err
 		}
 
 		colWidth := 20
-		for _, dir := range dirs {
-			if dir.IsDir() && len(dir.Name()) > colWidth {
-				colWidth = len(dir.Name())
+		for _, r := range repos {
+			if len(r.Name) > colWidth {
+				colWidth = len(r.Name)
 			}
 		}
 		colWidth += 2
 
 		var clean, dirty, skipped int
 
-		for _, dir := range dirs {
-			if !dir.IsDir() {
-				continue
-			}
-
-			repoPath := dir.Name()
-			changes, err := git.LocalChanges(repoPath)
+		for _, repo := range repos {
+			changes, err := git.LocalChanges(repo.Path)
 			if err != nil {
-				fmt.Printf("%s  %-*s  not a git repo\n", ui.Bold("-"), colWidth, repoPath)
+				fmt.Printf("%s  %-*s  not a git repo\n", ui.Bold("-"), colWidth, repo.Name)
 				skipped++
 				continue
 			}
 
 			if len(changes) == 0 {
-				fmt.Printf("%s  %-*s  clean\n", ui.Green("✓"), colWidth, repoPath)
+				fmt.Printf("%s  %-*s  clean\n", ui.Green("✓"), colWidth, repo.Name)
 				clean++
 			} else {
-				fmt.Printf("%s  %-*s  dirty (%s)\n", ui.Yellow("⚠"), colWidth, repoPath, strings.Join(changes, ", "))
+				fmt.Printf("%s  %-*s  dirty (%s)\n", ui.Yellow("⚠"), colWidth, repo.Name, strings.Join(changes, ", "))
 				dirty++
 			}
 		}
