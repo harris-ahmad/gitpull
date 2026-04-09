@@ -16,6 +16,10 @@ var standupCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		since, _ := cmd.Flags().GetString("since")
 
+		if !ai.IsAvailable(cfg.OllamaURL) {
+			return fmt.Errorf("Ollama is not running. Start it with: ollama serve\nThen pull a model: ollama pull mistral")
+		}
+
 		email, err := git.GitUserEmail()
 		if err != nil {
 			return fmt.Errorf("could not determine git user: %w", err)

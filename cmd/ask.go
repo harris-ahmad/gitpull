@@ -21,6 +21,10 @@ var askCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		question := strings.Join(args, " ")
 
+		if !ai.IsAvailable(cfg.OllamaURL) {
+			return fmt.Errorf("Ollama is not running. Start it with: ollama serve\nThen pull a model: ollama pull mistral")
+		}
+
 		dirs, err := os.ReadDir(".")
 		if err != nil {
 			return fmt.Errorf("failed to read current directory: %w", err)

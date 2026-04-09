@@ -23,6 +23,19 @@ type ollamaResponse struct {
 	Error    string `json:"error,omitempty"`
 }
 
+// IsAvailable checks if Ollama is running and reachable.
+func IsAvailable(ollamaURL string) bool {
+	if ollamaURL == "" {
+		ollamaURL = defaultOllamaURL
+	}
+	resp, err := http.Get(ollamaURL)
+	if err != nil {
+		return false
+	}
+	resp.Body.Close()
+	return resp.StatusCode == http.StatusOK
+}
+
 // generate sends a prompt to Ollama and returns the response text.
 func generate(ollamaURL, model, prompt string) (string, error) {
 	if ollamaURL == "" {

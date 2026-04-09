@@ -20,6 +20,10 @@ var commitCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		repoPath := args[0]
 
+		if !ai.IsAvailable(cfg.OllamaURL) {
+			return fmt.Errorf("Ollama is not running. Start it with: ollama serve\nThen pull a model: ollama pull mistral")
+		}
+
 		// check repo exists
 		if _, err := os.Stat(repoPath); err != nil {
 			return fmt.Errorf("repo %q not found in current directory", repoPath)
