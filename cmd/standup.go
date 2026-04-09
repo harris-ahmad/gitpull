@@ -1,0 +1,72 @@
+package cmd
+
+import (
+	"fmt"
+
+	"github.com/harris-ahmad/gitpull/ai"
+	"github.com/harris-ahmad/gitpull/git"
+	"github.com/harris-ahmad/gitpull/ui"
+	"github.com/spf13/cobra"
+)
+
+var standupCmd = &cobra.Command{
+	Use:   "standup",
+	Short: "Generate a standup summary from your recent commits across all repos",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		since, _ := cmd.Flags().GetString("since")
+
+		if !ai.IsAvailable(cfg.OllamaURL) {
+			return fmt.Errorf("Ollama is not running. Start it with: ollama serve\nThen pull a model: ollama pull mistral")
+		}
+
+		repos, err := repoList()
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("%s collecting commits since %s...\n", ui.Cyan("AI"), since)
+
+		repoCommits := make(map[string][]string)
+		for _, repo := range repos {
+			commits, err := git.MyRecentCommits(repo.Path, since)
+			if err != nil || len(commits) == 0 {
+				continue
+			}
+			if len(commits) > 5 {
+				commits = commits[:5]
+			}
+			repoCommits[repo.Name] = commits
+		}
+
+		if len(repoCommits) == 0 {
+			fmt.Printf("No commits found in the last %s.\n", since)
+			return nil
+		}
+
+		fmt.Println()
+		for repo, commits := range repoCommits {
+			fmt.Printf("%s\n", ui.Bold(repo))
+			for _, c := range commits {
+				fmt.Printf("  %s\n", c)
+			}
+		}
+
+		fmt.Printf("\n%s generating standup...\n", ui.Cyan("AI"))
+		standup, err := ai.GenerateStandup(cfg.OllamaURL, cfg.OllamaModel, repoCommits)
+		if err != nil {
+			return fmt.Errorf("AI error: %w", err)
+		}
+
+		sep := ui.Bold("────────────────────────────────────")
+		fmt.Println("\n" + sep)
+		fmt.Printf("%s\n", standup)
+		fmt.Println(sep)
+
+		return nil
+	},
+}
+
+func init() {
+	standupCmd.Flags().String("since", "24 hours ago", "how far back to look for commits")
+	rootCmd.AddCommand(standupCmd)
+}

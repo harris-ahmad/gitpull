@@ -5,11 +5,31 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	"github.com/harris-ahmad/gitpull/config"
 )
 
 var rootCmd = &cobra.Command{
 	Use: "gitpull",
 	Short: "Clone and sync GitHub repos with conflict prediction",
+}
+
+var cfg = mustLoadConfig()
+
+func mustLoadConfig() *config.Config {
+	cfg, err := config.Load()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not load config: %v\n", err)
+		return &config.Config{Parallel: 4}
+	}
+	return cfg
+}
+
+func init() {
+	rootCmd.PersistentFlags().String("token", cfg.Token, "GitHub API token")
+}
+
+func SetVersion(v string) {
+	rootCmd.Version = v
 }
 
 func Execute() {
