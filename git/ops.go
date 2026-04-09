@@ -10,6 +10,29 @@ import (
 	"strconv"
 )
 
+// CleanDryRun returns the list of untracked files/dirs that would be removed.
+func CleanDryRun(repoPath string) ([]string, error) {
+	out, err := runGitCommand(repoPath, "clean", "-nfd")
+	if err != nil {
+		return nil, err
+	}
+	if out == "" {
+		return []string{}, nil
+	}
+	var files []string
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimPrefix(line, "Would remove ")
+		files = append(files, strings.TrimSpace(line))
+	}
+	return files, nil
+}
+
+// Clean removes untracked files and directories from the repo.
+func Clean(repoPath string) error {
+	_, err := runGitCommand(repoPath, "clean", "-fd")
+	return err
+}
+
 // Stash saves all local changes in the repo with an optional message.
 func Stash(repoPath, message string) error {
 	args := []string{"stash", "push", "--include-untracked"}
