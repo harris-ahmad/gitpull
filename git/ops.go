@@ -182,6 +182,19 @@ func LocalDiff(repoPath string) (string, error) {
 	return out, nil
 }
 
+// Diff returns staged and unstaged changes for the repo without truncation.
+func Diff(repoPath string) (string, error) {
+	unstaged, err := runGitCommand(repoPath, "diff")
+	if err != nil {
+		return "", err
+	}
+	staged, err := runGitCommand(repoPath, "diff", "--cached")
+	if err != nil {
+		return "", err
+	}
+	return unstaged + staged, nil
+}
+
 // ConflictDiff returns the diff between HEAD and origin/<branch> for the given files.
 // This is passed to the AI so it has real context to explain the conflict.
 func ConflictDiff(repoPath, branch string, files []string) (string, error) {
