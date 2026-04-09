@@ -10,6 +10,31 @@ import (
 	"strconv"
 )
 
+// Stash saves all local changes in the repo with an optional message.
+func Stash(repoPath, message string) error {
+	args := []string{"stash", "push", "--include-untracked"}
+	if message != "" {
+		args = append(args, "-m", message)
+	}
+	_, err := runGitCommand(repoPath, args...)
+	return err
+}
+
+// StashPop restores the most recent stash in the repo.
+func StashPop(repoPath string) error {
+	_, err := runGitCommand(repoPath, "stash", "pop")
+	return err
+}
+
+// HasStash returns true if the repo has at least one stash entry.
+func HasStash(repoPath string) (bool, error) {
+	out, err := runGitCommand(repoPath, "stash", "list")
+	if err != nil {
+		return false, err
+	}
+	return out != "", nil
+}
+
 // GitUserEmail returns the user's git email from global config.
 func GitUserEmail() (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

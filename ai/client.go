@@ -77,6 +77,51 @@ func generate(ollamaURL, model, prompt string) (string, error) {
 	return stripMarkdown(strings.TrimSpace(result.Response)), nil
 }
 
+// cleanCommitMessage extracts just the conventional commit message, stripping
+// any intro or explanation lines the model adds around it.
+func cleanCommitMessage(s string) string {
+	types := []string{"feat", "fix", "chore", "refactor", "docs", "test", "style", "perf"}
+	lines := strings.Split(s, "\n")
+
+	// find the first line that starts with a conventional commit type
+	start := -1
+	for i, line := range lines {
+		lower := strings.ToLower(strings.TrimSpace(line))
+		for _, t := range types {
+			if strings.HasPrefix(lower, t) {
+				start = i
+				break
+			}
+		}
+		if start >= 0 {
+			break
+		}
+	}
+	if start < 0 {
+		return strings.TrimSpace(s)
+	}
+
+	// collect: summary line + blank line + optional body (stop at explanation)
+	var result []string
+	for i, line := range lines[start:] {
+		// stop if we hit a line that looks like model explanation (after body)
+		lower := strings.ToLower(strings.TrimSpace(line))
+		if i > 2 && (strings.HasPrefix(lower, "this") ||
+			strings.HasPrefix(lower, "if you") ||
+			strings.HasPrefix(lower, "note:") ||
+			strings.HasPrefix(lower, "the ") ||
+			strings.HasPrefix(lower, "here") ||
+			strings.HasPrefix(lower, "you can") ||
+			strings.HasPrefix(lower, "i've") ||
+			strings.HasPrefix(lower, "i used")) {
+			break
+		}
+		result = append(result, line)
+	}
+
+	return strings.TrimSpace(strings.Join(result, "\n"))
+}
+
 // stripMarkdown removes common markdown formatting so output renders cleanly in the terminal.
 func stripMarkdown(s string) string {
 	var lines []string
@@ -147,13 +192,19 @@ Write a single commit message following the Conventional Commits format:
 
 Types: feat, fix, chore, refactor, docs, test, style, perf
 Rules:
-- Summary line must be under 72 characters
-- Be specific — reference actual functions, files, or behaviour changed
-- No markdown, no bullet points, plain text only
-- Output only the commit message, nothing else`,
+- Output ONLY the commit message. No explanation, no commentary, no intro.
+- Summary line must be under 72 characters.
+- Be specific — reference actual functions, files, or behaviour changed.
+- No markdown, no bullet points, plain text only.
+- Do not say anything like "Here is", "This commit", "I've used", etc.
+- Your entire response must be a valid git commit message and nothing else.`,
 		diff,
 	)
-	return generate(ollamaURL, model, prompt)
+	out, err := generate(ollamaURL, model, prompt)
+	if err != nil {
+		return "", err
+	}
+	return cleanCommitMessage(out), nil
 }
 
 // GenerateStandup produces a standup summary from a map of repo → commits.
