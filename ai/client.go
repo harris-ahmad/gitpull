@@ -204,7 +204,20 @@ Rules:
 	if err != nil {
 		return "", err
 	}
-	return cleanCommitMessage(out), nil
+	// second pass: ask the model to extract just the commit message
+	extractPrompt := fmt.Sprintf(`Extract only the git commit message from the text below.
+Return only the commit message itself — no explanation, no intro, no commentary.
+A commit message starts with a type like feat, fix, chore, refactor, docs, test, style, or perf.
+
+Text:
+%s`, out)
+
+	cleaned, err := generate(ollamaURL, model, extractPrompt)
+	if err != nil {
+		// fall back to the raw output if second pass fails
+		return cleanCommitMessage(out), nil
+	}
+	return cleanCommitMessage(cleaned), nil
 }
 
 // GenerateStandup produces a standup summary from a map of repo → commits.
