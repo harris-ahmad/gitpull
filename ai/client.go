@@ -1,26 +1,34 @@
 package ai
 
 import (
-	"bytes"
-	"encoding/json"
+	"context"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
+
+	"github.com/tmc/langchaingo/chains"
+	"github.com/tmc/langchaingo/llms"
+	"github.com/tmc/langchaingo/llms/ollama"
+	"github.com/tmc/langchaingo/memory"
+	"github.com/tmc/langchaingo/outputparser"
+	"github.com/tmc/langchaingo/prompts"
 )
 
 const defaultOllamaURL = "http://localhost:11434"
 const defaultModel = "mistral"
 
-type ollamaRequest struct {
-	Model  string `json:"model"`
-	Prompt string `json:"prompt"`
-	Stream bool   `json:"stream"`
-}
-
-type ollamaResponse struct {
-	Response string `json:"response"`
-	Error    string `json:"error,omitempty"`
+// newLLM creates a LangChain Ollama LLM instance.
+func newLLM(ollamaURL, model string) (llms.Model, error) {
+	if ollamaURL == "" {
+		ollamaURL = defaultOllamaURL
+	}
+	if model == "" {
+		model = defaultModel
+	}
+	return ollama.New(
+		ollama.WithModel(model),
+		ollama.WithServerURL(ollamaURL),
+	)
 }
 
 // IsAvailable checks if Ollama is running and reachable.
@@ -36,114 +44,13 @@ func IsAvailable(ollamaURL string) bool {
 	return resp.StatusCode == http.StatusOK
 }
 
-// generate sends a prompt to Ollama and returns the response text.
-func generate(ollamaURL, model, prompt string) (string, error) {
-	if ollamaURL == "" {
-		ollamaURL = defaultOllamaURL
-	}
-	if model == "" {
-		model = defaultModel
-	}
-
-	body, err := json.Marshal(ollamaRequest{
-		Model:  model,
-		Prompt: prompt,
-		Stream: false,
-	})
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal request: %w", err)
-	}
-
-	resp, err := http.Post(ollamaURL+"/api/generate", "application/json", bytes.NewReader(body))
-	if err != nil {
-		return "", fmt.Errorf("could not reach Ollama at %s — is it running? (ollama serve): %w", ollamaURL, err)
-	}
-	defer resp.Body.Close()
-
-	raw, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read response: %w", err)
-	}
-
-	var result ollamaResponse
-	if err := json.Unmarshal(raw, &result); err != nil {
-		return "", fmt.Errorf("failed to parse response: %w", err)
-	}
-
-	if result.Error != "" {
-		return "", fmt.Errorf("Ollama error: %s", result.Error)
-	}
-
-	return stripMarkdown(strings.TrimSpace(result.Response)), nil
-}
-
-// cleanCommitMessage extracts just the conventional commit message, stripping
-// any intro or explanation lines the model adds around it.
-func cleanCommitMessage(s string) string {
-	types := []string{"feat", "fix", "chore", "refactor", "docs", "test", "style", "perf"}
-	lines := strings.Split(s, "\n")
-
-	// find the first line that starts with a conventional commit type
-	start := -1
-	for i, line := range lines {
-		lower := strings.ToLower(strings.TrimSpace(line))
-		for _, t := range types {
-			if strings.HasPrefix(lower, t) {
-				start = i
-				break
-			}
-		}
-		if start >= 0 {
-			break
-		}
-	}
-	if start < 0 {
-		return strings.TrimSpace(s)
-	}
-
-	// collect: summary line + blank line + optional body (stop at explanation)
-	var result []string
-	for i, line := range lines[start:] {
-		// stop if we hit a line that looks like model explanation (after body)
-		lower := strings.ToLower(strings.TrimSpace(line))
-		if i > 2 && (strings.HasPrefix(lower, "this") ||
-			strings.HasPrefix(lower, "if you") ||
-			strings.HasPrefix(lower, "note:") ||
-			strings.HasPrefix(lower, "the ") ||
-			strings.HasPrefix(lower, "here") ||
-			strings.HasPrefix(lower, "you can") ||
-			strings.HasPrefix(lower, "i've") ||
-			strings.HasPrefix(lower, "i used")) {
-			break
-		}
-		result = append(result, line)
-	}
-
-	return strings.TrimSpace(strings.Join(result, "\n"))
-}
-
-// stripMarkdown removes common markdown formatting so output renders cleanly in the terminal.
-func stripMarkdown(s string) string {
-	var lines []string
-	for _, line := range strings.Split(s, "\n") {
-		// remove bold/italic markers
-		line = strings.ReplaceAll(line, "**", "")
-		line = strings.ReplaceAll(line, "__", "")
-		line = strings.ReplaceAll(line, "*", "")
-		// convert markdown bullets to a clean dash
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "- ") || strings.HasPrefix(trimmed, "• ") {
-			line = "  " + trimmed
-		}
-		// strip inline code backticks
-		line = strings.ReplaceAll(line, "`", "")
-		lines = append(lines, line)
-	}
-	return strings.Join(lines, "\n")
-}
-
 // ExplainConflict explains why a merge conflict exists and how to resolve it.
 func ExplainConflict(ollamaURL, model string, conflictingFiles []string, diff string) (string, error) {
+	llm, err := newLLM(ollamaURL, model)
+	if err != nil {
+		return "", err
+	}
+
 	prompt := fmt.Sprintf(`You are a Git expert helping a developer resolve merge conflicts.
 
 Conflicting files:
@@ -163,65 +70,99 @@ Plain text only, no markdown.`,
 		strings.Join(conflictingFiles, "\n"),
 		diff,
 	)
-	return generate(ollamaURL, model, prompt)
+
+	return llms.GenerateFromSinglePrompt(context.Background(), llm, prompt)
 }
 
 // SummarizeCommits summarizes a list of incoming commit messages before a pull.
 func SummarizeCommits(ollamaURL, model string, commits []string) (string, error) {
-	prompt := fmt.Sprintf(`You are a Git expert. The following commits are about to be pulled into a local repository:
-%s
-
-Summarize what these changes do in 1-2 sentences. Be concise and specific.
-No markdown, no bullet points, just plain text.`,
-		strings.Join(commits, "\n"),
-	)
-	return generate(ollamaURL, model, prompt)
-}
-
-// GenerateCommitMessage suggests a commit message based on the diff of local changes.
-func GenerateCommitMessage(ollamaURL, model, diff string) (string, error) {
-	prompt := fmt.Sprintf(`You are an expert software engineer helping write a git commit message.
-
-Here is the diff of local changes:
-%s
-
-Write a single commit message following the Conventional Commits format:
-<type>(<optional scope>): <short summary>
-
-<optional body explaining what and why, not how — max 2 sentences>
-
-Types: feat, fix, chore, refactor, docs, test, style, perf
-Rules:
-- Output ONLY the commit message. No explanation, no commentary, no intro.
-- Summary line must be under 72 characters.
-- Be specific — reference actual functions, files, or behaviour changed.
-- No markdown, no bullet points, plain text only.
-- Do not say anything like "Here is", "This commit", "I've used", etc.
-- Your entire response must be a valid git commit message and nothing else.`,
-		diff,
-	)
-	out, err := generate(ollamaURL, model, prompt)
+	llm, err := newLLM(ollamaURL, model)
 	if err != nil {
 		return "", err
 	}
-	// second pass: ask the model to extract just the commit message
-	extractPrompt := fmt.Sprintf(`Extract only the git commit message from the text below.
-Return only the commit message itself — no explanation, no intro, no commentary.
-A commit message starts with a type like feat, fix, chore, refactor, docs, test, style, or perf.
+
+	prompt := fmt.Sprintf(`You are a Git expert. The following commits are about to be pulled:
+%s
+
+Summarize what these changes do in 1-2 sentences. Be concise and specific.
+Plain text only, no markdown.`,
+		strings.Join(commits, "\n"),
+	)
+
+	return llms.GenerateFromSinglePrompt(context.Background(), llm, prompt)
+}
+
+// SummarizeLocalChanges explains what the developer was working on based on their local diff.
+func SummarizeLocalChanges(ollamaURL, model string, diff string) (string, error) {
+	llm, err := newLLM(ollamaURL, model)
+	if err != nil {
+		return "", err
+	}
+
+	prompt := fmt.Sprintf(`You are a Git expert. A developer has uncommitted local changes.
+
+Diff:
+%s
+
+In 1-2 sentences, summarize what the developer was working on.
+Be specific — mention files, functions, or concepts involved.
+Do not give advice. Plain text only.`,
+		diff,
+	)
+
+	return llms.GenerateFromSinglePrompt(context.Background(), llm, prompt)
+}
+
+// GenerateCommitMessage uses a two-step LangChain pipeline to generate a clean commit message.
+func GenerateCommitMessage(ollamaURL, model string, diff string) (string, error) {
+	llm, err := newLLM(ollamaURL, model)
+	if err != nil {
+		return "", err
+	}
+	ctx := context.Background()
+
+	// step 1: generate commit message
+	step1Prompt := fmt.Sprintf(`You are an expert software engineer. Write a git commit message for this diff.
+Follow Conventional Commits format: <type>(<scope>): <summary>
+
+Types: feat, fix, chore, refactor, docs, test, style, perf
+Rules:
+- Output ONLY the commit message, nothing else
+- Summary line under 72 characters
+- Optional body: max 2 sentences explaining what and why
+- No explanations, no commentary, no intro sentences
+
+Diff:
+%s`, diff)
+
+	raw, err := llms.GenerateFromSinglePrompt(ctx, llm, step1Prompt)
+	if err != nil {
+		return "", err
+	}
+
+	// step 2: extract just the commit message using LangChain
+	step2Prompt := fmt.Sprintf(`Extract only the git commit message from the text below.
+Return only the commit message — no explanation, no intro, no commentary.
+The message starts with a type: feat, fix, chore, refactor, docs, test, style, or perf.
 
 Text:
-%s`, out)
+%s`, raw)
 
-	cleaned, err := generate(ollamaURL, model, extractPrompt)
+	cleaned, err := llms.GenerateFromSinglePrompt(ctx, llm, step2Prompt)
 	if err != nil {
-		// fall back to the raw output if second pass fails
-		return cleanCommitMessage(out), nil
+		return strings.TrimSpace(raw), nil
 	}
-	return cleanCommitMessage(cleaned), nil
+
+	return strings.TrimSpace(cleaned), nil
 }
 
 // GenerateStandup produces a standup summary from a map of repo → commits.
 func GenerateStandup(ollamaURL, model string, repoCommits map[string][]string) (string, error) {
+	llm, err := newLLM(ollamaURL, model)
+	if err != nil {
+		return "", err
+	}
+
 	var b strings.Builder
 	for repo, commits := range repoCommits {
 		b.WriteString("repo: " + repo + "\n")
@@ -230,9 +171,9 @@ func GenerateStandup(ollamaURL, model string, repoCommits map[string][]string) (
 		}
 	}
 
-	prompt := fmt.Sprintf(`You are helping a software developer write their daily standup update.
+	prompt := fmt.Sprintf(`You are helping a developer write their daily standup.
 
-Here are the commits they made, grouped by repository:
+Commits grouped by repository:
 %s
 
 Rules:
@@ -242,39 +183,95 @@ Rules:
 - No introduction, no header, no markdown. Output the sentences directly.`,
 		b.String(),
 	)
-	return generate(ollamaURL, model, prompt)
+
+	out, err := llms.GenerateFromSinglePrompt(context.Background(), llm, prompt)
+	if err != nil {
+		return "", err
+	}
+	return stripMarkdown(out), nil
 }
 
-// Answer responds to a natural language question about the user's repos using gathered context.
-func Answer(ollamaURL, model, context, question string) (string, error) {
-	prompt := fmt.Sprintf(`You are an assistant helping a developer manage their Git repositories.
+// NewConversation creates a conversational chain with memory for gitpull ask.
+// Returns a function that takes a question and returns an answer.
+func NewConversation(ollamaURL, model, repoContext string) (func(string) (string, error), error) {
+	llm, err := newLLM(ollamaURL, model)
+	if err != nil {
+		return nil, err
+	}
+
+	systemPrompt := `You are a Git assistant helping a developer manage their repositories.
 
 Here is the current state of their repositories:
-%s
+` + repoContext + `
 
-The developer asks: %s
+Answer questions based only on this data. Be specific — reference exact repo names,
+branch names, and commit messages. Do not make up information not in the data.
+Plain text only, no markdown.
 
-Answer based only on the repository data above. Be specific and concise.
-Reference exact repo names, branch names, and commit messages from the data.
-Do not make up information that isn't in the data. Plain text only.`,
-		context,
-		question,
-	)
-	return generate(ollamaURL, model, prompt)
+Current conversation:
+{{.history}}
+Human: {{.input}}
+AI:`
+
+	prompt := prompts.NewPromptTemplate(systemPrompt, []string{"history", "input"})
+	mem := memory.NewConversationBuffer()
+
+	chain := chains.LLMChain{
+		Prompt:       prompt,
+		LLM:          llm,
+		Memory:       mem,
+		OutputParser: outputparser.NewSimple(),
+		OutputKey:    "text",
+	}
+
+	return func(question string) (string, error) {
+		out, err := chains.Call(
+			context.Background(),
+			&chain,
+			map[string]any{"input": question},
+		)
+		if err != nil {
+			return "", err
+		}
+		raw, _ := out["text"].(string)
+		return stripMarkdown(strings.TrimSpace(raw)), nil
+	}, nil
 }
 
-// SummarizeLocalChanges explains what the developer was working on based on their local diff.
-func SummarizeLocalChanges(ollamaURL, model string, diff string) (string, error) {
-	prompt := fmt.Sprintf(`You are a Git expert. A developer has uncommitted local changes in a repository.
+// Answer sends a single question with repo context (non-conversational fallback).
+func Answer(ollamaURL, model, repoContext, question string) (string, error) {
+	llm, err := newLLM(ollamaURL, model)
+	if err != nil {
+		return "", err
+	}
 
-Here is the diff of their local changes:
+	prompt := fmt.Sprintf(`You are a Git assistant helping a developer manage their repositories.
+
+Repository state:
 %s
 
-In 1-2 sentences, summarize what the developer was working on based on these changes.
-Be specific — mention the files, functions, or concepts involved.
-Do not give advice or suggest commands. Just describe what they were doing.
-Plain text only.`,
-		diff,
+Question: %s
+
+Answer based only on the data above. Be specific. Plain text only.`,
+		repoContext, question,
 	)
-	return generate(ollamaURL, model, prompt)
+
+	out, err := llms.GenerateFromSinglePrompt(context.Background(), llm, prompt)
+	if err != nil {
+		return "", err
+	}
+	return stripMarkdown(strings.TrimSpace(out)), nil
+}
+
+// stripMarkdown removes markdown formatting for clean terminal output.
+func stripMarkdown(s string) string {
+	var lines []string
+	for _, line := range strings.Split(s, "\n") {
+		line = strings.ReplaceAll(line, "**", "")
+		line = strings.ReplaceAll(line, "__", "")
+		line = strings.ReplaceAll(line, "*", "")
+		line = strings.ReplaceAll(line, "`", "")
+		lines = append(lines, line)
+	}
+	return strings.Join(lines, "\n")
 }
