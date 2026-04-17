@@ -394,7 +394,10 @@ func EnsureMainAndUpToDate(repoPath string) (string, error) {
 	defaultBranch, err := DefaultBranch(repoPath)
 	
 	if err != nil {
-		return "", fmt.Errorf("failed to get default branch: %w", err)
+		defaultBranch, err = CurrentBranch(repoPath)
+		if err != nil {
+			return "", fmt.Errorf("failed to get current branch: %w", err)
+		}
 	}
 
 	current, _ := CurrentBranch(repoPath)
@@ -412,12 +415,10 @@ func EnsureMainAndUpToDate(repoPath string) (string, error) {
 		return "", fmt.Errorf("cannot switch to %s: you have uncommitted changes: %s", defaultBranch, strings.Join(changes, ", "))
 	}
 
-	if err := Fetch(repoPath); err != nil{
-		return "", fmt.Errorf("failed to fetch: %w", err)
-	}
-
-	if err := Pull(repoPath, defaultBranch); err != nil{
-		return "", fmt.Errorf("failed to pull: %w", err)
+	if err := Fetch(repoPath); err == nil{
+		if err := Pull(repoPath, defaultBranch); err != nil {
+			return "", fmt.Errorf("failed to pull: %w", err)
+		}
 	}
 
 	return defaultBranch, nil
