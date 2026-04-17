@@ -25,7 +25,7 @@ var startCmd = &cobra.Command{
 
 		repos, err := repoList()
 		if err != nil {
-			return nil
+			return err
 		}
 
 		if len(repos) > 1 {
