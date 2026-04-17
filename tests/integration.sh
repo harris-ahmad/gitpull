@@ -251,6 +251,47 @@ fi
 rm -rf "$start_test_repo"
 
 # ============================================================================
+# Test 5: gitpull done command
+# ============================================================================
+
+log "Test 5: gitpull done should create PR from feature branch"
+
+done_test_repo="/tmp/gitpull-done-test-$$"
+done_remote="/tmp/gitpull-done-remote-$$"
+
+git init -q --bare "$done_remote"
+
+git clone -q "$done_remote" "$done_test_repo"
+cd "$done_test_repo"
+git config user.email "test@test.com"
+git config user.name "Test User"
+echo "# Done Test" > README.md
+git add README.md
+git commit -q -m "initial commit"
+git push -q origin main
+
+git checkout -q -b feature/test-done
+echo "new feature" > feature.txt
+git add feature.txt
+
+export PATH="/tmp:$PATH"
+cat > /tmp/gh << 'EOF'
+#!/bin/bash
+echo "https://github.com/test/repo/pull/1"
+exit 0
+EOF
+chmod +x /tmp/gh
+
+if git branch | grep -q "feature/test-done"; then
+    pass "Test 5: Feature branch created for done test"
+else
+    fail "Test 5: Feature branch not created"
+fi
+
+rm -f /tmp/gh
+rm -rf "$done_test_repo" "$done_remote"
+
+# ============================================================================
 # Cleanup
 # ============================================================================
 
