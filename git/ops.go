@@ -389,3 +389,45 @@ func runGitCommand(dir string, args ...string) (string, error) {
 	
 	return strings.TrimRight(stdout.String(), "\n\r"), nil
 }
+
+func EnsureMainAndUpToDate(repoPath string) (string, error) {
+	defaultBranch, err := DefaultBranch(repoPath)
+	
+	if err != nil {
+		return "", fmt.Errorf("failed to get default branch: %w", err)
+	}
+
+	current, _ := CurrentBranch(repoPath)
+	if current != defaultBranch {
+		if err := SwitchBranch(repoPath, defaultBranch); err != nil {
+			return "", fmt.Errorf("failed to switch to default branch: %w", err)
+		}
+	}
+
+	changes, err := LocalChanges(repoPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to check local changes: %w", err)
+	}
+	if len(changes) > 0{
+		return "", fmt.Errorf("cannot switch to %s: you have uncommitted changes: %s", defaultBranch, strings.Join(changes, ", "))
+	}
+
+	if err := Fetch(repoPath); err != nil{
+		return "", fmt.Errorf("failed to fetch: %w", err)
+	}
+
+	if err := Pull(repoPath, defaultBranch); err != nil{
+		return "", fmt.Errorf("failed to pull: %w", err)
+	}
+
+	return defaultBranch, nil
+}
+
+func CreateAndSwitchBranch(repoPath, branchName string) error {
+	out, _ := runGitCommand(repoPath, "branch", "--list", branchName)
+	if out != "" {
+		return fmt.Errorf("branch %s already exists", branchName)
+	}
+
+	return CreateBranch(repoPath, branchName)
+}
