@@ -25,11 +25,9 @@ fail() {
     exit 1
 }
 
-# Build gitpull if not exists
-if [ ! -f "$GITPULL" ]; then
-    log "Building gitpull..."
-    go build -o gitpull .
-fi
+# Always rebuild gitpull to ensure we're testing the latest code
+log "Building gitpull..."
+go build -o gitpull .
 
 # Cleanup previous test run
 rm -rf "$TEST_DIR"
@@ -290,6 +288,71 @@ fi
 
 rm -f /tmp/gh
 rm -rf "$done_test_repo" "$done_remote"
+
+# ============================================================================
+# Test 6: gitpull merge command
+# ============================================================================
+
+log "Test 6: gitpull merge should wait for CI and auto-merge PR"
+
+merge_test_repo="/tmp/gitpull-merge-test-$$"
+merge_remote="/tmp/gitpull-merge-remote-$$"
+
+git init -q --bare "$merge_remote"
+
+git clone -q "$merge_remote" "$merge_test_repo"
+cd "$merge_test_repo"
+git config user.email "test@test.com"
+git config user.name "Test User"
+echo "# Merge Test" > README.md
+git add README.md
+git commit -q -m "initial commit"
+git push -q origin main
+
+git checkout -q -b feature/test-merge
+echo "new feature" > feature.txt
+git add feature.txt
+git commit -q -m "feat: test feature"
+git push -q -u origin feature/test-merge
+
+export PATH="/tmp:$PATH"
+cat > /tmp/gh << 'EOF'
+#!/bin/bash
+if [ "$1" = "pr" ]; then
+    case "$2" in
+        view)
+            echo "https://github.com/test/repo/pull/2"
+            ;;
+        checks)
+            echo "All checks have passed"
+            ;;
+        merge)
+            exit 0
+            ;;
+    esac
+fi
+EOF
+
+chmod +x /tmp/gh
+
+$GITPULL merge > /dev/null 2>&1
+
+current=$(git rev-parse --abbrev-ref HEAD)
+if [ "$current" = "main" ]; then
+    pass "Test 6a: Switched to main after merge"
+else
+    fail "Test 6a: Failed to switch to main"
+fi
+
+if git branch | grep -q "feature/test-merge"; then
+    fail "Test 6b: Feature branch was not deleted with merge"
+else
+    pass "Test 6b: Feature branch cleaned up successfully"
+fi
+
+rm -f /tmp/gh
+rm -rf "$merge_test_repo" "$merge_remote"
+
 
 # ============================================================================
 # Cleanup
