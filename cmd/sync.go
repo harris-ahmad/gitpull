@@ -16,13 +16,15 @@ var syncCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		report, _ := cmd.Flags().GetBool("report")
 		useAI, _ := cmd.Flags().GetBool("ai")
+		cleanup, _ := cmd.Flags().GetBool("cleanup")
 
 		repos, err := repoList()
 		if err != nil {
 			return err
 		}
 
-		var total, pulled, upToDate, skippedLocal, skippedConflict, skippedOther int
+		var total, pulled, upToDate, skippedConflict, skippedOther int
+		var autoStashed, autoPopped, branchesCleanedUp int
 
 		colWidth := 20
 		for _, r := range repos {
@@ -45,31 +47,6 @@ var syncCmd = &cobra.Command{
 			if err := git.Fetch(repo.Path); err != nil {
 				fmt.Printf("%s  %-*s  failed to fetch: %v\n", ui.Bold("-"), colWidth, repo.Name, err)
 				skippedOther++
-				continue
-			}
-
-			changes, err := git.LocalChanges(repo.Path)
-			if err != nil {
-				fmt.Printf("%s  %-*s  failed to check local changes: %v\n", ui.Bold("-"), colWidth, repo.Name, err)
-				skippedOther++
-				continue
-			}
-			if len(changes) > 0 {
-				fmt.Printf("%s  %-*s  local changes — skipped (%s)\n", ui.Yellow("⚠"), colWidth, repo.Name, strings.Join(changes, ", "))
-				skippedLocal++
-
-				if useAI {
-					fmt.Printf("    %s summarizing local changes...\n", ui.Cyan("AI"))
-					diff, _ := git.LocalDiff(repo.Path)
-					if diff != "" {
-						summary, err := ai.SummarizeLocalChanges(cfg.OllamaURL, cfg.OllamaModel, diff)
-						if err != nil {
-							fmt.Printf("    %s could not summarize: %v\n", ui.Yellow("AI"), err)
-						} else {
-							fmt.Printf("    %s %s\n", ui.Cyan("AI"), summary)
-						}
-					}
-				}
 				continue
 			}
 
@@ -109,6 +86,43 @@ var syncCmd = &cobra.Command{
 				continue
 			}
 
+			// Check for local changes AFTER we know there are no conflicts
+			changes, err := git.LocalChanges(repo.Path)
+			if err != nil {
+				fmt.Printf("%s  %-*s  failed to check local changes: %v\n", ui.Bold("-"), colWidth, repo.Name, err)
+				skippedOther++
+				continue
+			}
+
+			// Auto-stash if there are local changes
+			stashed := false
+			if len(changes) > 0 {
+				if report {
+					fmt.Printf("%s  %-*s  would auto-stash local changes (%s)\n", ui.Yellow("⚡"), colWidth, repo.Name, strings.Join(changes, ", "))
+				} else {
+					if err := git.Stash(repo.Path, "gitpull auto-stash"); err != nil {
+						fmt.Printf("%s  %-*s  failed to stash: %v\n", ui.Red("✗"), colWidth, repo.Name, err)
+						skippedOther++
+						continue
+					}
+					stashed = true
+					autoStashed++
+				}
+
+				if useAI {
+					fmt.Printf("    %s local changes detected (%s)\n", ui.Cyan("AI"), strings.Join(changes, ", "))
+					diff, _ := git.LocalDiff(repo.Path)
+					if diff != "" {
+						summary, err := ai.SummarizeLocalChanges(cfg.OllamaURL, cfg.OllamaModel, diff)
+						if err != nil {
+							fmt.Printf("    %s could not summarize: %v\n", ui.Yellow("AI"), err)
+						} else {
+							fmt.Printf("    %s %s\n", ui.Cyan("AI"), summary)
+						}
+					}
+				}
+			}
+
 			if useAI {
 				commits, err := git.IncomingCommits(repo.Path, branch)
 				if err == nil && len(commits) > 0 {
@@ -121,15 +135,40 @@ var syncCmd = &cobra.Command{
 
 			if report {
 				fmt.Printf("%s  %-*s  safe to pull\n", ui.Cyan("↓"), colWidth, repo.Name)
-			} else {
-				fmt.Printf("%s  %-*s  pulling...", ui.Cyan("↓"), colWidth, repo.Name)
-				if err := git.Pull(repo.Path, branch); err != nil {
-					fmt.Printf(" failed: %v\n", err)
+				continue
+			}
+
+			// Pull
+			fmt.Printf("%s  %-*s  pulling...", ui.Cyan("↓"), colWidth, repo.Name)
+			pullErr := git.Pull(repo.Path, branch)
+
+			// Auto-pop stash regardless of pull success/failure (to not lose work)
+			if stashed {
+				if popErr := git.StashPop(repo.Path); popErr != nil {
+					fmt.Printf(" %s (stash restore failed: %v)\n", ui.Red("pull ok but stash lost"), popErr)
 					skippedOther++
 					continue
 				}
-				fmt.Printf(" done\n")
-				pulled++
+				autoPopped++
+			}
+
+			if pullErr != nil {
+				fmt.Printf(" failed: %v\n", pullErr)
+				skippedOther++
+				continue
+			}
+
+			fmt.Printf(" done\n")
+			pulled++
+
+			// Cleanup merged branches if --cleanup flag
+			if cleanup {
+				deleted, err := git.CleanupMergedBranches(repo.Path)
+				if err == nil && len(deleted) > 0 {
+					fmt.Printf("    %s cleaned up %d merged branch(es): %s\n",
+						ui.Green("✓"), len(deleted), strings.Join(deleted, ", "))
+					branchesCleanedUp += len(deleted)
+				}
 			}
 		}
 
@@ -138,7 +177,12 @@ var syncCmd = &cobra.Command{
 		fmt.Printf(" %d repos analyzed\n", total)
 		fmt.Printf("  %s %d pulled\n", ui.Cyan("↓"), pulled)
 		fmt.Printf("  %s %d up to date\n", ui.Green("✓"), upToDate)
-		fmt.Printf("  %s %d skipped (local changes)\n", ui.Yellow("⚠"), skippedLocal)
+		if autoStashed > 0 {
+			fmt.Printf("  %s %d auto-stashed and restored\n", ui.Yellow("⚡"), autoStashed)
+		}
+		if branchesCleanedUp > 0 {
+			fmt.Printf("  %s %d merged branches cleaned up\n", ui.Green("✓"), branchesCleanedUp)
+		}
 		fmt.Printf("  %s %d skipped (conflict predicted)\n", ui.Red("✗"), skippedConflict)
 		fmt.Printf("  %s %d errors or not git repos\n", ui.Bold("-"), skippedOther)
 		fmt.Println(sep)
@@ -150,5 +194,6 @@ var syncCmd = &cobra.Command{
 func init() {
 	syncCmd.Flags().Bool("report", false, "analyze only, pull nothing")
 	syncCmd.Flags().Bool("ai", false, "enable AI-powered analysis (requires ollama)")
+	syncCmd.Flags().Bool("cleanup", false, "cleanup merged branches after successful pull")
 	rootCmd.AddCommand(syncCmd)
 }

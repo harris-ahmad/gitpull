@@ -59,6 +59,47 @@ func HasStash(repoPath string) (bool, error) {
 	return out != "", nil
 }
 
+// CleanupMergedBranches deletes local branches that have been merged into the current branch.
+// Returns the list of deleted branch names.
+func CleanupMergedBranches(repoPath string) ([]string, error) {
+	current, err := CurrentBranch(repoPath)
+	if err != nil {
+		return nil, err
+	}
+
+	out, err := runGitCommand(repoPath, "branch", "--merged")
+	if err != nil {
+		return nil, err
+	}
+
+	if out == "" {
+		return []string{}, nil
+	}
+
+	var deleted []string
+	protected := map[string]bool{
+		"main":   true,
+		"master": true,
+		"dev":    true,
+		current:  true,
+	}
+
+	for _, line := range strings.Split(out, "\n") {
+		branch := strings.TrimSpace(strings.TrimPrefix(line, "*"))
+		branch = strings.TrimSpace(branch)
+
+		if branch == "" || protected[branch] {
+			continue
+		}
+
+		if _, err := runGitCommand(repoPath, "branch", "-d", branch); err == nil {
+			deleted = append(deleted, branch)
+		}
+	}
+
+	return deleted, nil
+}
+
 // GitUserEmail returns the user's git email from global config.
 func GitUserEmail() (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -262,7 +303,7 @@ func AddCommitPush(repoPath, message string) error {
 
 // git -C <path> pull origin <branch>
 func Pull(repoPath string, branch string) error {
-	_, err := runGitCommand(repoPath, "pull", "origin", branch)
+	_, err := runGitCommand(repoPath, "pull", "--no-rebase", "origin", branch)
 	return err
 }
 
