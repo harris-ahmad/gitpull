@@ -436,14 +436,20 @@ func CreateAndSwitchBranch(repoPath, branchName string) error {
 func SwitchToDefaultBranch(repoPath string) error {
 	defaultBranch, err := DefaultBranch(repoPath)
 	if err != nil {
-		defaultBranch, err = CurrentBranch(repoPath)
-		if err != nil {
+		// If origin/HEAD is not set, try common branch names
+		for _, branch := range []string{"main", "master", "dev"} {
+			if err := SwitchBranch(repoPath, branch); err == nil {
+				defaultBranch = branch
+				break
+			}
+		}
+		if defaultBranch == "" {
 			return fmt.Errorf("failed to determine default branch: %w", err)
 		}
-	}
-
-	if err := SwitchBranch(repoPath, defaultBranch); err != nil {
-		return fmt.Errorf("failed to switch to %s: %w", defaultBranch, err)
+	} else {
+		if err := SwitchBranch(repoPath, defaultBranch); err != nil {
+			return fmt.Errorf("failed to switch to %s: %w", defaultBranch, err)
+		}
 	}
 
 	if err := Fetch(repoPath); err == nil {
