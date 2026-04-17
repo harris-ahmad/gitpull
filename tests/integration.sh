@@ -219,6 +219,38 @@ else
 fi
 
 # ============================================================================
+# Test 4: gitpull start command
+# ============================================================================
+
+log "Test 4: gitpull start should create feature branch from up-to-date main"
+
+start_test_repo="/tmp/gitpull-start-test-$$"
+mkdir -p "$start_test_repo"
+cd "$start_test_repo"
+git init -q
+git config user.email "test@test.com"
+git config user.name "Test User"
+echo "# Start Test" > README.md
+git add README.md
+git commit -q -m "initial commit"
+
+output=$($GITPULL start login-page 2>&1)
+if git branch | grep -q "feature/login-page"; then
+    pass "Test 4a: Feature branch created"
+else
+    fail "Test 4a: Feature branch not created"
+fi
+
+current=$(git rev-parse --abbrev-ref HEAD)
+if [ "$current" = "feature/login-page" ]; then
+    pass "Test 4b: Switched to feature branch"
+else
+    fail "Test 4b: Failed to switch to feature branch"
+fi
+
+rm -rf "$start_test_repo"
+
+# ============================================================================
 # Cleanup
 # ============================================================================
 
